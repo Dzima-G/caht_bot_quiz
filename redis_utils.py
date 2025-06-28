@@ -59,8 +59,22 @@ def get_user_random_question(r: Redis, user_id: int) -> Optional[dict]:
 
     random_key = random.choice(keys)
     r.set(f'user:{user_id}:current_question', random_key)
+    r.hincrby(f'user:{user_id}:stats', 'questions_asked', amount=1)
 
     return r.hgetall(random_key)
+
+def get_stat(r: Redis, user_id: int) -> dict:
+    stats = r.hgetall(f'user:{user_id}:stats')
+
+    return  stats
+
+def record_stat(r: Redis, user_id: int, action: str) -> None:
+    if action == 'correct_answer':
+        r.hincrby(f'user:{user_id}:stats', 'correct_answers', amount=1)
+    if action == 'give_up':
+        r.hincrby(f'user:{user_id}:stats', 'give_up', amount=1)
+
+
 
 
 def get_user_question(redis_conn: Redis, user_id: int) -> dict:

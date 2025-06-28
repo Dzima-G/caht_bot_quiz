@@ -10,7 +10,7 @@ from telegram.ext import (CallbackContext, CommandHandler, ConversationHandler,
                           Filters, MessageHandler, Updater)
 
 from redis_utils import (get_user_question, get_user_random_question,
-                         start_redist)
+                         start_redist, get_stat, record_stat)
 
 logger = logging.getLogger('tg_logger')
 
@@ -47,7 +47,8 @@ def handle_solution_attempt(update: Update, context: CallbackContext) -> int:
     user_answer_text = normalize_text(update.message.text)
 
     if user_answer_text.startswith(correct_answer_text):
-        update.message.reply_text('Правильно! Поздравляю! Для следующего вопроса нажмите «Новый вопрос».')
+        update.message.reply_text('Правильно! Поздравляю!\n Для следующего вопроса нажмите «Новый вопрос».')
+        record_stat(r, user_id, 'correct_answer')
         return QUESTION
     else:
         update.message.reply_text('Неправильно… Попробуете ещё раз?')
@@ -71,22 +72,33 @@ def give_up(update: Update, context: CallbackContext):
     r = context.bot_data.get('CONNECTION_REDIS')
     question_data = get_user_question(r, user_id)
     new_question_data = get_user_random_question(r, user_id)
+    record_stat(r, user_id, 'give_up')
 
     update.message.reply_text(f'Вы сдались...\nПравильный ответ: {question_data.get("answer")}')
     update.message.reply_text(f'Ваш новый вопрос:\n {new_question_data.get("question")}')
 
     return ANSWER
 
+
 def get_hint(update: Update, context: CallbackContext) -> None:
     user_id = update.effective_user.id
     r = context.bot_data.get('CONNECTION_REDIS')
     question_data = get_user_question(r, user_id)
 
-    update.message.reply_text(question_data.get("comment"))
+    update.message.reply_text(question_data.get('comment'))
 
 
 def get_statistic(update: Update, context: CallbackContext) -> None:
-    update.message.reply_text('Вот ваша статистика: ...')
+    user_id = update.effective_user.id
+    r = context.bot_data.get('CONNECTION_REDIS')
+    stat_data = get_stat(r, user_id)
+
+    update.message.reply_text(f'Получено вопросов: {stat_data.get("questions_asked")}\n'
+                              f'Правильных ответов: {stat_data.get("correct_answers")}\n'
+                              f'Сдались раз: {
+                              stat_data.get("give_up") if stat_data.get("give_up") is not None else 0
+                              }\n'
+                              )
 
 
 def start(update: Update, context: CallbackContext) -> int:
