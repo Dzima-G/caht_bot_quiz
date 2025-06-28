@@ -29,9 +29,11 @@ def handle_new_question_request(update: Update, context: CallbackContext) -> int
     r = context.bot_data.get('CONNECTION_REDIS')
 
     question_data = get_user_random_question(r, user_id)
-
-    update.message.reply_text(question_data.get('question'))
-    update.message.reply_text(question_data.get('answer'))
+    if question_data is None:
+        update.message.reply_text('Нет вопросов для викторины, извините.')
+    else:
+        update.message.reply_text(question_data.get('question'))
+        update.message.reply_text(question_data.get('answer'))
 
     return ANSWER
 
@@ -75,6 +77,13 @@ def give_up(update: Update, context: CallbackContext):
 
     return ANSWER
 
+def get_hint(update: Update, context: CallbackContext) -> None:
+    user_id = update.effective_user.id
+    r = context.bot_data.get('CONNECTION_REDIS')
+    question_data = get_user_question(r, user_id)
+
+    update.message.reply_text(question_data.get("comment"))
+
 
 def get_statistic(update: Update, context: CallbackContext) -> None:
     update.message.reply_text('Вот ваша статистика: ...')
@@ -82,12 +91,12 @@ def get_statistic(update: Update, context: CallbackContext) -> None:
 
 def start(update: Update, context: CallbackContext) -> int:
     """Send a message when the command /start is issued."""
-    custom_keyboard = [['Новый вопрос', 'Сдаться'],
-                       ['Мой счет']]
+    custom_keyboard = [['Новый вопрос', 'Подсказка'],
+                       ['Сдаться', 'Мой счет']]
     reply_markup = ReplyKeyboardMarkup(custom_keyboard)
     user = update.effective_user
     update.message.reply_markdown_v2(
-        f'Привет {user.mention_markdown_v2()}\! Я бот для викторины\! ',
+        rf'Привет {user.mention_markdown_v2()}\! Я бот для викторины\! ',
         reply_markup=reply_markup,
     )
     return QUESTION
@@ -116,6 +125,7 @@ def run_tg_bot(tg_token: str, redis: Redis) -> None:
                 MessageHandler(Filters.regex('^Новый вопрос$'), block_new_question),
                 MessageHandler(Filters.regex('^Сдаться$'), give_up),
                 MessageHandler(Filters.regex('^Мой счет$'), get_statistic),
+                MessageHandler(Filters.regex('^Подсказка$'), get_hint),
                 MessageHandler(Filters.text & ~Filters.command, handle_solution_attempt),
             ]
         },

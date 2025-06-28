@@ -3,6 +3,7 @@ import logging
 import os
 import random
 import subprocess
+from typing import Dict, Optional
 
 import redis
 from dotenv import load_dotenv
@@ -49,10 +50,12 @@ def get_questions(file_name: str, encoding:str = 'utf-8') -> dict:
         raise
 
 
-def get_user_random_question(r: Redis, user_id: int) -> dict:
-    keys = []
-    for key in r.scan_iter(match='question:*', count=100):
-        keys.append(key)
+def get_user_random_question(r: Redis, user_id: int) -> Optional[dict]:
+
+    keys = list(r.scan_iter(match='question:*', count=100))
+    if not keys:
+        logger.warning('База данных пуста - вопросов нет.')
+        return None
 
     random_key = random.choice(keys)
     r.set(f'user:{user_id}:current_question', random_key)
@@ -87,13 +90,11 @@ def send_json_in_db(redis_conn: Redis, question_data: dict, prefix: str = 'id') 
 
         for i, (item, data) in enumerate(question_data.items(), start=start):
             key = f'question:{prefix}_{i}'
-            redis_conn.hset(key, mapping={
-                'question': data['question'],
-                'answer': data['answer']
-            })
+            redis_conn.hset(key, mapping=data)
 
+        logger.info(f'Данные добавлены в базу данных.')
         return True
-    except Exception as e:
+    except Exception:
         logger.exception('Проблема с записью в БД.')
         return False
 
@@ -107,3 +108,5 @@ if __name__ == '__main__':
     dist_questions = get_questions('questions.json')
 
     r = start_redist(redis_host, redis_port)
+
+    send_json_in_db(r, dist_questions)
