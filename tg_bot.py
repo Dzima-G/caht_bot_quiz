@@ -33,7 +33,6 @@ def handle_new_question_request(update: Update, context: CallbackContext) -> int
         update.message.reply_text('Нет вопросов для викторины, извините.')
     else:
         update.message.reply_text(question_data.get('question'))
-        update.message.reply_text(question_data.get('answer'))
 
     return ANSWER
 
@@ -51,7 +50,7 @@ def handle_solution_attempt(update: Update, context: CallbackContext) -> int:
         record_stat(r, user_id, 'correct_answer')
         return QUESTION
     else:
-        update.message.reply_text('Неправильно… Попробуете ещё раз?')
+        update.message.reply_text('Неправильно… Попробуете ещё раз:')
         return ANSWER
 
 
@@ -93,11 +92,13 @@ def get_statistic(update: Update, context: CallbackContext) -> None:
     r = context.bot_data.get('CONNECTION_REDIS')
     stat_data = get_stat(r, user_id)
 
-    update.message.reply_text(f'Получено вопросов: {stat_data.get("questions_asked")}\n'
-                              f'Правильных ответов: {stat_data.get("correct_answers")}\n'
-                              f'Сдались раз: {
-                              stat_data.get("give_up") if stat_data.get("give_up") is not None else 0
-                              }\n'
+    questions_asked_count = stat_data.get("questions_asked") if stat_data.get("questions_asked") is not None else 0
+    correct_answers_count = stat_data.get("correct_answers") if stat_data.get("correct_answers") is not None else 0
+    give_up_count = stat_data.get("give_up") if stat_data.get("give_up") is not None else 0
+
+    update.message.reply_text(f'Получено вопросов: {questions_asked_count}\n'
+                              f'Правильных ответов: {correct_answers_count}\n'
+                              f'Сдались раз: {give_up_count}\n'
                               )
 
 

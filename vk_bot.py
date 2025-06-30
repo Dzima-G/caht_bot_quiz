@@ -12,7 +12,7 @@ from vk_api.utils import get_random_id
 from vk_api.vk_api import VkApiMethod
 
 from redis_utils import (get_user_question, get_user_random_question,
-                         start_redist)
+                         start_redist, record_stat, get_stat)
 
 logger = logging.getLogger('vk_logger')
 
@@ -61,13 +61,12 @@ def handle_new_question_request(vk_api: VkApiMethod, redis_conn: Redis, event, k
     text = question_data.get('question')
     send_message(vk_api, event, text, keyboard)
 
-    text = question_data.get('answer')
-    send_message(vk_api, event, text, keyboard)
-
 
 def give_up(vk_api: VkApiMethod, redis_conn: Redis, event, keyboard) -> None:
     question_data = get_user_question(redis_conn, event.user_id)
     new_question_data = get_user_random_question(redis_conn, event.user_id)
+
+    record_stat(redis_conn, event.user_id, 'give_up')
 
     text = f'Вы сдались...!\nПравильный ответ: {question_data.get("answer")}\n'
     send_message(vk_api, event, text, keyboard)
@@ -76,7 +75,14 @@ def give_up(vk_api: VkApiMethod, redis_conn: Redis, event, keyboard) -> None:
 
 
 def get_statistic(vk_api: VkApiMethod, redis_conn: Redis, event, keyboard) -> None:
-    text = 'Вот ваша статистика: ...'
+    stat_data = get_stat(redis_conn, event.user_id)
+    questions_asked_count = stat_data.get("questions_asked") if stat_data.get("questions_asked") is not None else 0
+    correct_answers_count = stat_data.get("correct_answers") if stat_data.get("correct_answers") is not None else 0
+    give_up_count = stat_data.get("give_up") if stat_data.get("give_up") is not None else 0
+
+    text = f'Получено вопросов: {questions_asked_count}\n' \
+           f'Правильных ответов: {correct_answers_count}\n' \
+           f'Сдались раз: {give_up_count}'
     send_message(vk_api, event, text, keyboard)
 
 
@@ -90,8 +96,9 @@ def handle_solution_attempt(vk_api: VkApiMethod, redis_conn: Redis, event, keybo
         text = 'Правильно! Поздравляю! Для следующего вопроса нажмите «Новый вопрос».'
         send_message(vk_api, event, text, keyboard)
         user_states[event.user_id] = QUESTION
+        record_stat(redis_conn, event.user_id, 'correct_answer')
     else:
-        text = 'Неправильно… Попробуете ещё раз?'
+        text = 'Неправильно… Попробуете ещё раз:'
         send_message(vk_api, event, text, keyboard)
 
 
