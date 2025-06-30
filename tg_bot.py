@@ -148,6 +148,7 @@ def run_tg_bot(tg_token: str, redis: Redis) -> None:
     dispatcher.add_handler(conv_handler)
 
     try:
+        logger.info('Бот Telegram успешно запущен!')
         updater.start_polling()
         updater.idle()
     except Exception:

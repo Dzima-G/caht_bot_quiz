@@ -42,6 +42,11 @@ python redis_utils.py
 python tg_bot.py
 ```
 
+Рабочие примерны ботов:
+Telegram бот - @python_dzima_bot
+Вконтакте бот - https://vk.com/python_dzima_bot
+
+
 ### Цель проекта
 
 Код написан в образовательных целях на онлайн-курсе для веб-разработчиков [dvmn.org](https://dvmn.org/).
