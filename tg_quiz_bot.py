@@ -9,8 +9,8 @@ from telegram import ReplyKeyboardMarkup, Update
 from telegram.ext import (CallbackContext, CommandHandler, ConversationHandler,
                           Filters, MessageHandler, Updater)
 
-from redis_utils import (get_user_question, get_user_random_question,
-                         start_redist, get_stat, record_stat)
+from redis_function import (get_user_question, get_user_random_question,
+                            start_redist, get_stats, record_stats)
 
 logger = logging.getLogger('tg_logger')
 
@@ -26,9 +26,9 @@ def normalize_text(text: str) -> str:
 
 def handle_new_question_request(update: Update, context: CallbackContext) -> int:
     user_id = update.effective_user.id
-    r = context.bot_data.get('CONNECTION_REDIS')
+    redis_conn = context.bot_data.get('redis_connection')
 
-    question_data = get_user_random_question(r, user_id)
+    question_data = get_user_random_question(redis_conn, user_id)
     if question_data is None:
         update.message.reply_text('Нет вопросов для викторины, извините.')
     else:
@@ -39,15 +39,15 @@ def handle_new_question_request(update: Update, context: CallbackContext) -> int
 
 def handle_solution_attempt(update: Update, context: CallbackContext) -> int:
     user_id = update.effective_user.id
-    r = context.bot_data.get('CONNECTION_REDIS')
-    question_data = get_user_question(r, user_id)
+    redis_conn = context.bot_data.get('redis_connection')
+    question_data = get_user_question(redis_conn, user_id)
 
     correct_answer_text = normalize_text(question_data.get('answer'))
     user_answer_text = normalize_text(update.message.text)
 
     if user_answer_text.startswith(correct_answer_text):
         update.message.reply_text('Правильно! Поздравляю!\n Для следующего вопроса нажмите «Новый вопрос».')
-        record_stat(r, user_id, 'correct_answer')
+        record_stats(redis_conn, user_id, 'correct_answer')
         return QUESTION
     else:
         update.message.reply_text('Неправильно… Попробуете ещё раз:')
@@ -61,17 +61,17 @@ def block_new_question(update: Update, context: CallbackContext) -> int:
     return ANSWER
 
 
-def default_answer(update: Update, context: CallbackContext):
+def send_default_answer(update: Update, context: CallbackContext):
     update.message.reply_text(
         'Нажмите «Новый вопрос» что бы начать викторину.')
 
 
 def give_up(update: Update, context: CallbackContext):
     user_id = update.effective_user.id
-    r = context.bot_data.get('CONNECTION_REDIS')
-    question_data = get_user_question(r, user_id)
-    new_question_data = get_user_random_question(r, user_id)
-    record_stat(r, user_id, 'give_up')
+    redis_conn = context.bot_data.get('redis_connection')
+    question_data = get_user_question(redis_conn, user_id)
+    new_question_data = get_user_random_question(redis_conn, user_id)
+    record_stats(redis_conn, user_id, 'give_up')
 
     update.message.reply_text(f'Вы сдались...\nПравильный ответ: {question_data.get("answer")}')
     update.message.reply_text(f'Ваш новый вопрос:\n {new_question_data.get("question")}')
@@ -81,20 +81,20 @@ def give_up(update: Update, context: CallbackContext):
 
 def get_hint(update: Update, context: CallbackContext) -> None:
     user_id = update.effective_user.id
-    r = context.bot_data.get('CONNECTION_REDIS')
-    question_data = get_user_question(r, user_id)
+    redis_conn = context.bot_data.get('redis_connection')
+    question_data = get_user_question(redis_conn, user_id)
 
     update.message.reply_text(question_data.get('comment'))
 
 
 def get_statistic(update: Update, context: CallbackContext) -> None:
     user_id = update.effective_user.id
-    r = context.bot_data.get('CONNECTION_REDIS')
-    stat_data = get_stat(r, user_id)
+    redis_conn = context.bot_data.get('redis_connection')
+    stats = get_stats(redis_conn, user_id)
 
-    questions_asked_count = stat_data.get("questions_asked") if stat_data.get("questions_asked") is not None else 0
-    correct_answers_count = stat_data.get("correct_answers") if stat_data.get("correct_answers") is not None else 0
-    give_up_count = stat_data.get("give_up") if stat_data.get("give_up") is not None else 0
+    questions_asked_count = stats.get("questions_asked") if stats.get("questions_asked") is not None else 0
+    correct_answers_count = stats.get("correct_answers") if stats.get("correct_answers") is not None else 0
+    give_up_count = stats.get("give_up") if stats.get("give_up") is not None else 0
 
     update.message.reply_text(f'Получено вопросов: {questions_asked_count}\n'
                               f'Правильных ответов: {correct_answers_count}\n'
@@ -120,7 +120,7 @@ def run_tg_bot(tg_token: str, redis: Redis) -> None:
     updater = Updater(tg_token)
 
     dispatcher = updater.dispatcher
-    dispatcher.bot_data['CONNECTION_REDIS'] = redis
+    dispatcher.bot_data['redis_connection'] = redis
 
     conv_handler = ConversationHandler(
         entry_points=[
@@ -132,7 +132,7 @@ def run_tg_bot(tg_token: str, redis: Redis) -> None:
             QUESTION: [
                 MessageHandler(Filters.regex('^Новый вопрос$'), handle_new_question_request),
                 MessageHandler(Filters.regex('^Мой счет$'), get_statistic),
-                MessageHandler(Filters.text & ~Filters.command, default_answer),
+                MessageHandler(Filters.text & ~Filters.command, send_default_answer),
             ],
             ANSWER: [
                 MessageHandler(Filters.regex('^Новый вопрос$'), block_new_question),

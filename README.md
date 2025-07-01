@@ -31,7 +31,7 @@ pip install -r requirements.txt
 Установка см. документацию https://redis-docs.ru/operate/oss_and_stack/install/install-redis/ 
 Для экспорта вопросов в базу данных используйте файл `questions.json` (пример файла представлен в репозитории) и скрипт: 
 ```sh
-python redis_utils.py
+python redis_function.py
 ```
 
 ### Применение
@@ -39,7 +39,7 @@ python redis_utils.py
 
 Для запуска например:
 ```sh
-python tg_bot.py
+python tg_quiz_bot.py
 ```
 
 Рабочие примерны ботов:

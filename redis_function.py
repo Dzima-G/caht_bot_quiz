@@ -3,7 +3,7 @@ import logging
 import os
 import random
 import subprocess
-from typing import Dict, Optional
+from typing import Optional
 
 import redis
 from dotenv import load_dotenv
@@ -14,12 +14,12 @@ logger = logging.getLogger(__name__)
 
 def start_redist(host: str, port: str, db: int = 0) -> redis:
     port = int(port)
-    client = redis.Redis(host=host, port=port, db=db, decode_responses=True)
+    redis_conn = redis.Redis(host=host, port=port, db=db, decode_responses=True)
 
     try:
-        client.ping()
+        redis_conn.ping()
         logger.info('Подключились к Redis!')
-        return client
+        return redis_conn
     except redis.exceptions.ConnectionError as e:
         logger.warning(f'Не удалось подключиться к Redis: {e}')
 
@@ -29,52 +29,43 @@ def start_redist(host: str, port: str, db: int = 0) -> redis:
         logger.exception('Ошибка запуска Redis через консоль.')
 
     try:
-        client.ping()
+        redis_conn.ping()
         logger.info('Подключились к Redis!')
-        return client
+        return redis_conn
     except redis.exceptions.ConnectionError as e:
         logger.warning(f'Не удалось подключиться к Redis: {e}')
 
 
-def get_questions(file_name: str, encoding:str = 'utf-8') -> dict:
-    if not os.path.isfile(file_name):
-        logger.error(f'Файл не найден: {file_name}.')
-        raise FileNotFoundError(f'Файл не найден: {file_name}.')
-
-    try:
-        with open(file_name, 'r', encoding=encoding) as contents:
-            contents = json.load(contents)
-        return contents
-    except Exception as e:
-        logger.exception(f'Ошибка при чтении файла {file_name}: {e}')
-        raise
+def get_questions(file_name: str, encoding: str = 'utf-8') -> dict:
+    with open(file_name, 'r', encoding=encoding) as content:
+        content = json.load(content)
+    return content
 
 
-def get_user_random_question(r: Redis, user_id: int) -> Optional[dict]:
-
-    keys = list(r.scan_iter(match='question:*', count=100))
+def get_user_random_question(redis_conn: Redis, user_id: int) -> Optional[dict]:
+    keys = list(redis_conn.scan_iter(match='question:*', count=100))
     if not keys:
         logger.warning('База данных пуста - вопросов нет.')
         return None
 
     random_key = random.choice(keys)
-    r.set(f'user:{user_id}:current_question', random_key)
-    r.hincrby(f'user:{user_id}:stats', 'questions_asked', amount=1)
+    redis_conn.set(f'user:{user_id}:current_question', random_key)
+    redis_conn.hincrby(f'user:{user_id}:stats', 'questions_asked', amount=1)
 
-    return r.hgetall(random_key)
+    return redis_conn.hgetall(random_key)
 
-def get_stat(r: Redis, user_id: int) -> dict:
-    stats = r.hgetall(f'user:{user_id}:stats')
 
-    return  stats
+def get_stats(redis_conn: Redis, user_id: int) -> dict:
+    stats = redis_conn.hgetall(f'user:{user_id}:stats')
 
-def record_stat(r: Redis, user_id: int, action: str) -> None:
+    return stats
+
+
+def record_stats(redis_conn: Redis, user_id: int, action: str) -> None:
     if action == 'correct_answer':
-        r.hincrby(f'user:{user_id}:stats', 'correct_answers', amount=1)
+        redis_conn.hincrby(f'user:{user_id}:stats', 'correct_answers', amount=1)
     if action == 'give_up':
-        r.hincrby(f'user:{user_id}:stats', 'give_up', amount=1)
-
-
+        redis_conn.hincrby(f'user:{user_id}:stats', 'give_up', amount=1)
 
 
 def get_user_question(redis_conn: Redis, user_id: int) -> dict:
@@ -93,8 +84,7 @@ def get_user_question(redis_conn: Redis, user_id: int) -> dict:
     return question_data
 
 
-def send_json_in_db(redis_conn: Redis, question_data: dict, prefix: str = 'id') -> bool:
-    try:
+def send_json_in_db(redis_conn: Redis, question_data: dict, prefix: str = 'id') -> None:
         existing_count = len(redis_conn.keys('question:*'))
 
         if existing_count > 0:
@@ -107,10 +97,8 @@ def send_json_in_db(redis_conn: Redis, question_data: dict, prefix: str = 'id') 
             redis_conn.hset(key, mapping=data)
 
         logger.info(f'Данные добавлены в базу данных.')
-        return True
-    except Exception:
-        logger.exception('Проблема с записью в БД.')
-        return False
+
+
 
 
 if __name__ == '__main__':
@@ -119,8 +107,15 @@ if __name__ == '__main__':
     redis_host = os.environ['REDIS_HOST']
     redis_port = os.environ['REDIS_PORT']
 
-    dist_questions = get_questions('questions.json')
+    question_file_path = 'questions.json'
 
-    r = start_redist(redis_host, redis_port)
+    try:
+        dist_questions = get_questions('questions.json')
+    except FileNotFoundError:
+        raise f'Файл не найден: {question_file_path}.'
 
-    send_json_in_db(r, dist_questions)
+
+    redis_connection = start_redist(redis_host, redis_port)
+
+    send_json_in_db(redis_connection, dist_questions)
+
